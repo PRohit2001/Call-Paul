@@ -8,6 +8,7 @@ package com.example.callpaulwear.presentation
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import com.example.callpaulwear.datalayer.WatchDataLayerSender
 import androidx.activity.compose.setContent
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.foundation.background
@@ -38,7 +39,21 @@ class MainActivity : ComponentActivity() {
     }
 
     fun sendTriggerFromWatch() {
-        Toast.makeText(this, "Call Paul pressed", Toast.LENGTH_SHORT).show()
+        WatchDataLayerSender.sendCallPaulTrigger(
+            context = this,
+            scenario = "mom_calling",
+            delaySeconds = 5,
+            onSuccess = {
+                runOnUiThread {
+                    Toast.makeText(this, "Call Paul sent to phone", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onFailure = { message ->
+                runOnUiThread {
+                    Toast.makeText(this, "Phone not connected: $message", Toast.LENGTH_LONG).show()
+                }
+            }
+        )
     }
 }
 
