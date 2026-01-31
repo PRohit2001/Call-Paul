@@ -1,15 +1,14 @@
 package com.callpaul.call_paul
 
-import android.os.Handler
-import android.os.Looper
+import android.content.Intent
 import android.util.Log
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.WearableListenerService
-import io.flutter.plugin.common.MethodChannel
 
 /**
- * Receives Wear Data Layer messages on path /call-paul and forwards them to Flutter.
- * Required so the system delivers watch messages even when the app is in background.
+ * Receives Wear Data Layer messages on path /call-paul.
+ * Launches/brings to front MainActivity with the payload so the app wakes up
+ * even when closed or in background.
  */
 class CallPaulMessageService : WearableListenerService() {
 
@@ -34,10 +33,12 @@ class CallPaulMessageService : WearableListenerService() {
         val payload = messageEvent.data?.let { String(it) }
         Log.d(TAG, "Payload: $payload")
 
-        // Forward to Flutter on main thread
-        Handler(Looper.getMainLooper()).post {
-            MainActivity.notifyFlutterWatchMessage(payload)
+        // Wake up the phone app: launch or bring to front MainActivity with payload
+        val intent = Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+            putExtra(MainActivity.EXTRA_WATCH_PAYLOAD, payload)
         }
+        startActivity(intent)
     }
 
     companion object {

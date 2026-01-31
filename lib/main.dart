@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_wear_os_connectivity/flutter_wear_os_connectivity.dart';
+import 'package:http/http.dart' as http;
 
 /// Used by native WearableListenerService to show acknowledgment when message is received.
 final GlobalKey<NavigatorState> kNavigatorKey = GlobalKey<NavigatorState>();
@@ -29,6 +30,36 @@ void addWatchEventLog(String message, {String? detail}) {
     watchEventLog.removeAt(0);
   }
   watchEventLogVersion.value++;
+}
+
+/// Digital bridge: when the watch triggers the phone, the phone calls the n8n webhook.
+/// Returns a short status string so the app can show whether the POST succeeded.
+Future<String> triggerN8nWorkflow(String name, String scenario) async {
+  final String n8nTestUrl =
+      'https://pranavdesolator.app.n8n.cloud/webhook/call-paul';
+
+  try {
+    final response = await http.post(
+      Uri.parse(n8nTestUrl),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'name': name,
+        'scenario': scenario,
+        'trigger': 'watch_tap',
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      debugPrint('n8n Received: ${response.body}');
+      return 'n8n OK (200)';
+    } else {
+      debugPrint('n8n Error: ${response.statusCode}');
+      return 'n8n Error: ${response.statusCode}';
+    }
+  } catch (e) {
+    debugPrint('Connection Failed: $e');
+    return 'n8n failed: $e';
+  }
 }
 
 void main() {
@@ -78,13 +109,21 @@ void showWatchAcknowledgmentFromPayload(BuildContext context, String? payloadStr
   _showWatchAcknowledgmentWithContext(context, parsed);
 }
 
-void _showWatchAcknowledgmentWithContext(BuildContext context, CallPaulWatchPayload? payload) {
+Future<void> _showWatchAcknowledgmentWithContext(BuildContext context, CallPaulWatchPayload? payload) async {
   final scenario = payload?.scenario ?? '—';
   final delay = payload?.delaySeconds != null
       ? '${payload!.delaySeconds}s'
       : '—';
   final trigger = payload?.trigger ?? 'call_paul';
 
+  // Digital bridge: when watch hits phone, phone hits n8n
+  String n8nStatus = '—';
+  if (payload != null) {
+    n8nStatus = await triggerN8nWorkflow('call_paul', payload.scenario ?? 'unknown');
+    addWatchEventLog('n8n webhook', detail: n8nStatus);
+  }
+
+  if (!context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       content: Text(
@@ -95,6 +134,7 @@ void _showWatchAcknowledgmentWithContext(BuildContext context, CallPaulWatchPayl
     ),
   );
 
+  if (!context.mounted) return;
   showDialog<void>(
     context: context,
     builder: (ctx) => AlertDialog(
@@ -107,7 +147,8 @@ void _showWatchAcknowledgmentWithContext(BuildContext context, CallPaulWatchPayl
       ),
       content: Text(
         'Call Paul was triggered from your watch.\n\n'
-        'Scenario: $scenario\nDelay: $delay\nTrigger: $trigger',
+        'Scenario: $scenario\nDelay: $delay\nTrigger: $trigger\n\n'
+        'n8n: $n8nStatus',
       ),
       actions: [
         TextButton(
