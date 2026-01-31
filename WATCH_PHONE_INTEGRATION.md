@@ -27,12 +27,14 @@ This doc describes how the **phone app** (this repo, `phone-app` branch) and the
 ## Phone app (this project)
 
 - **Application ID:** `com.example.callpaulwear` (in `android/app/build.gradle.kts`).
-- **Plugin:** `flutter_wear_os_connectivity` – configures the Wear Data Layer and listens for messages.
-- **Behavior:**
-  - On startup: calls `configureWearableAPI()`, then subscribes to `messageReceived(pathURI: Uri(path: '/call-paul'))`.
-  - When a message is received on `/call-paul`: decodes JSON, then shows:
-    - A **SnackBar**: “Watch connected! Call Paul triggered — Scenario: X, Delay: Ys”.
-    - An **AlertDialog** with scenario, delay, and trigger (stronger acknowledgment).
+- **Path:** `/call-paul` (exact; watch must use this in `sendMessage`).
+- **Native listener (required):** A **WearableListenerService** (`CallPaulMessageService`) is registered in **AndroidManifest.xml** so the system delivers messages to the app:
+  - **Intent-filter:** `com.google.android.gms.wearable.MESSAGE_RECEIVED` with **data** `scheme="wear"`, `host="*"`, `path="/call-paul"`.
+  - The service receives the message, forwards the payload to Flutter via **MethodChannel** `call_paul/watch`, and Flutter shows the acknowledgment.
+- **Plugin:** `flutter_wear_os_connectivity` is also used for in-app listening; the native service ensures messages are received even when the app is in background.
+- **Behavior:** When a message is received on `/call-paul` (from native service or plugin), the app shows:
+  - A **SnackBar**: “Watch connected! Call Paul triggered — Scenario: X, Delay: Ys”.
+  - An **AlertDialog** “Watch link” with scenario, delay, and trigger.
 
 ## Watch app (watch-app branch)
 

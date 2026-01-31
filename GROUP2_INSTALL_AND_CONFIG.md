@@ -88,9 +88,34 @@ The phone app expects a JSON object with:
 1. Install the **phone APK** on the phone and open **Call Paul** (leave it open or recently opened).
 2. Install and run your **watch app** on the paired Wear OS watch.
 3. On the watch, press the “Call Paul” button (sending the message to `/call-paul` with the JSON above).
-4. On the phone you should see:
-   - A **green SnackBar:** “Watch connected! Call Paul triggered — Scenario: …, Delay: …s”
-   - An **AlertDialog:** “Watch link” with scenario, delay, and trigger.
+4. On the phone you should see the **expected display** below (that’s how you know the acknowledgment is successful).
+
+### Expected display when acknowledgment is successful
+
+**Before you press the button on the watch (phone app open):**
+
+- **Home screen:** App bar title **“Call Paul”**, main text **“Group 1 – Smartphone app”**, subtext **“Fake call • AI scripts • n8n SOS”**.
+- **Status line:** A **green watch icon** and the text **“Listening for watch on /call-paul”** (confirms the app is ready to receive).
+
+**Right after you press “Call Paul” on the watch (in order):**
+
+1. **Green SnackBar** (bottom of screen, ~4 seconds):  
+   **“Watch connected! Call Paul triggered — Scenario: &lt;scenario&gt;, Delay: &lt;delay&gt;s”**  
+   Example: *“Watch connected! Call Paul triggered — Scenario: boss, Delay: 15s”* (if the watch sent `scenario: "boss"`, `delay_seconds: 15`).
+
+2. **Alert dialog** (popup in the middle):
+   - **Title:** A green watch icon + **“Watch link”**.
+   - **Body:**  
+     **“Call Paul was triggered from your watch.”**  
+     Then three lines: **Scenario: &lt;value&gt;**, **Delay: &lt;value&gt;s**, **Trigger: &lt;value&gt;** (e.g. *Trigger: call_paul*).
+   - **Button:** **“OK”** (tap to dismiss).
+
+3. **In-app event log** (on the home screen, below the status line):
+   - A section **“Watch event log (real time)”** shows a scrollable list of received messages.
+   - Each entry shows **time (HH:mm:ss)**, **“Message received from watch”**, and the **JSON payload** (e.g. `{"trigger":"call_paul","scenario":"boss","delay_seconds":15}`).
+   - Newest entry appears at the top. The log is visible as long as the Call Paul app is open; scroll down on the home screen to see it.
+
+If you see the green SnackBar, the “Watch link” dialog, **and** a new line in the event log with your payload, the acknowledgment is successful and the link is working.
 
 If you don’t see this:
 

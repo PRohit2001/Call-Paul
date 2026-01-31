@@ -34,24 +34,28 @@ Yes — the APK is saved **on your system** (your PC), inside your project folde
 
 **Important:** The path below is a **folder path on your computer**. Do **not** type it in a web browser (you will get a “site can’t be reached” or DNS error). Use **File Explorer** (Windows) or **Finder** (Mac) to open that folder.
 
-**Relative path** (from your project root, e.g. `Call-Paul`):
+**Where Flutter puts the APK (use this):**
 
 ```
-build/app/outputs/flutter-apk/call_paul_phone.apk
+build/app/outputs/flutter-apk/app-release.apk
 ```
 
-**Full path example on Windows** (replace with your actual project location):
+**Full path on Windows:**
 
 ```
-C:\Users\Sahil S\Desktop\Cursor_hackathon\Call-Paul\build\app\outputs\flutter-apk\call_paul_phone.apk
+C:\Users\Sahil S\Desktop\Cursor_hackathon\Call-Paul\build\app\outputs\flutter-apk\app-release.apk
 ```
 
-**How to find the file:**
+Flutter’s build log says: *"Built build\app\outputs\flutter-apk\app-release.apk"* — that file is updated every time you run `flutter build apk --release`. **Use this file** (and check its timestamp) when sharing with Group 2. You can rename it to **call_paul_phone.apk** when sending.
 
-1. Open **File Explorer** (Windows) or **Finder** (Mac).
-2. Go to your project folder (e.g. `C:\Users\Sahil S\Desktop\Cursor_hackathon\Call-Paul`).
-3. Open the folders: **build** → **app** → **outputs** → **flutter-apk**.
-4. The file **call_paul_phone.apk** will be there **after** you run `flutter build apk --release`.
+**Other folder (may be outdated):**  
+There is also `build/app/outputs/apk/release/` (with `call_paul_phone.apk` from Gradle). That path is **not** what Flutter updates when you run `flutter build apk --release`. Flutter writes the new APK to **flutter-apk/** and may leave **apk/release/** unchanged, so that folder often shows an **old** timestamp. **Do not** use it for the latest build — use **flutter-apk/app-release.apk** and check its date/time.
+
+**How to find the latest build:**
+
+1. Open **File Explorer**.
+2. Go to: **Call-Paul** → **build** → **app** → **outputs** → **flutter-apk**.
+3. Use **app-release.apk** (check its date/time — it should match when you ran the build).
 
 The **build** folder is created only when you run the build command. If you haven’t built yet, run the commands above first.
 
@@ -82,6 +86,7 @@ Output: `build/app/outputs/bundle/release/app-release.aab` (bundle name unchange
 ## Troubleshooting
 
 - **Build fails:** Run `flutter clean` then `flutter pub get` and try again.
+- **APK in `apk/release/` has an old timestamp:** That folder is not the one Flutter updates. Use **`build/app/outputs/flutter-apk/app-release.apk`** — that file is updated on every `flutter build apk --release`. If even that file has an old timestamp, run `flutter clean` then `flutter build apk --release` to force a full rebuild.
 - **Signing:** Release APK is signed with the debug key by default. For production, configure signing in `android/app/build.gradle.kts` (see [Flutter docs](https://docs.flutter.dev/deployment/android#signing-the-app)).
 
 ### "Namespace not specified" for flutter_wear_os_connectivity

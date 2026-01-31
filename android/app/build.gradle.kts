@@ -47,6 +47,11 @@ android {
     }
 }
 
+dependencies {
+    // Wear Data Layer (WearableListenerService); plugin may also bring it in
+    implementation("com.google.android.gms:play-services-wearable:18.0.0")
+}
+
 flutter {
     source = "../.."
 }

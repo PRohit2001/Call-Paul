@@ -2,9 +2,50 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_wear_os_connectivity/flutter_wear_os_connectivity.dart';
 
+/// Used by native WearableListenerService to show acknowledgment when message is received.
+final GlobalKey<NavigatorState> kNavigatorKey = GlobalKey<NavigatorState>();
+
+/// In-app log of watch events (message received, etc.) for real-time visibility.
+const int _kMaxLogEntries = 50;
+final List<WatchLogEntry> watchEventLog = [];
+final ValueNotifier<int> watchEventLogVersion = ValueNotifier(0);
+
+class WatchLogEntry {
+  final String time;
+  final String message;
+  final String? detail;
+
+  WatchLogEntry({required this.time, required this.message, this.detail});
+}
+
+void addWatchEventLog(String message, {String? detail}) {
+  final now = DateTime.now();
+  final time = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+  watchEventLog.add(WatchLogEntry(time: time, message: message, detail: detail));
+  if (watchEventLog.length > _kMaxLogEntries) {
+    watchEventLog.removeAt(0);
+  }
+  watchEventLogVersion.value++;
+}
+
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Native WearableListenerService sends messages on this channel when watch sends to /call-paul
+  const MethodChannel('call_paul/watch').setMethodCallHandler((call) async {
+    if (call.method == 'onWatchMessage') {
+      final payload = call.arguments as String?;
+      addWatchEventLog('Message received from watch', detail: payload);
+      final context = kNavigatorKey.currentState?.overlay?.context;
+      if (context != null && context.mounted) {
+        showWatchAcknowledgmentFromPayload(context, payload);
+      }
+    }
+  });
+
   runApp(const CallPaulApp());
 }
 
@@ -14,6 +55,7 @@ class CallPaulApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: kNavigatorKey,
       title: 'Call Paul',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
@@ -22,6 +64,59 @@ class CallPaulApp extends StatelessWidget {
       home: const HomeScreen(),
     );
   }
+}
+
+/// Show SnackBar + dialog from a raw JSON payload string (used by native listener).
+void showWatchAcknowledgmentFromPayload(BuildContext context, String? payloadString) {
+  CallPaulWatchPayload? parsed;
+  try {
+    if (payloadString != null && payloadString.isNotEmpty) {
+      final json = jsonDecode(payloadString) as Map<String, dynamic>?;
+      parsed = CallPaulWatchPayload.fromJson(json);
+    }
+  } catch (_) {}
+  _showWatchAcknowledgmentWithContext(context, parsed);
+}
+
+void _showWatchAcknowledgmentWithContext(BuildContext context, CallPaulWatchPayload? payload) {
+  final scenario = payload?.scenario ?? '—';
+  final delay = payload?.delaySeconds != null
+      ? '${payload!.delaySeconds}s'
+      : '—';
+  final trigger = payload?.trigger ?? 'call_paul';
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+        'Watch connected! Call Paul triggered — Scenario: $scenario, Delay: $delay',
+      ),
+      backgroundColor: Colors.green,
+      duration: const Duration(seconds: 4),
+    ),
+  );
+
+  showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.watch, color: Colors.green),
+          SizedBox(width: 8),
+          Text('Watch link'),
+        ],
+      ),
+      content: Text(
+        'Call Paul was triggered from your watch.\n\n'
+        'Scenario: $scenario\nDelay: $delay\nTrigger: $trigger',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: const Text('OK'),
+        ),
+      ],
+    ),
+  );
 }
 
 /// Payload from watch: { "trigger": "...", "scenario": "...", "delay_seconds": number }
@@ -96,63 +191,23 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onWatchMessage(WearOSMessage message) {
     try {
       final payload = utf8.decode(message.data);
+      addWatchEventLog('Message received (Flutter listener)', detail: payload);
       final json = jsonDecode(payload) as Map<String, dynamic>?;
       final parsed = CallPaulWatchPayload.fromJson(json);
 
       if (!mounted) return;
-      _showWatchAcknowledgment(parsed);
+      _showWatchAcknowledgmentWithContext(context, parsed);
     } catch (e) {
+      addWatchEventLog('Message received (raw)', detail: null);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text('Watch message received (raw)'),
             backgroundColor: Colors.green,
           ),
         );
       }
     }
-  }
-
-  void _showWatchAcknowledgment(CallPaulWatchPayload? payload) {
-    final scenario = payload?.scenario ?? '—';
-    final delay = payload?.delaySeconds != null
-        ? '${payload!.delaySeconds}s'
-        : '—';
-    final trigger = payload?.trigger ?? 'call_paul';
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Watch connected! Call Paul triggered — Scenario: $scenario, Delay: $delay',
-        ),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 4),
-      ),
-    );
-
-    // Optional: show a dialog for stronger acknowledgment
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.watch, color: Colors.green),
-            SizedBox(width: 8),
-            Text('Watch link'),
-          ],
-        ),
-        content: Text(
-          'Call Paul was triggered from your watch.\n\n'
-          'Scenario: $scenario\nDelay: $delay\nTrigger: $trigger',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
@@ -170,36 +225,113 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Call Paul'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
-      body: Center(
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Icon(
               Icons.phone_in_talk,
-              size: 64,
+              size: 48,
               color: Theme.of(context).colorScheme.primary,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             const Text(
               'Group 1 – Smartphone app',
+              textAlign: TextAlign.center,
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             const Text(
               'Fake call • AI scripts • n8n SOS',
+              textAlign: TextAlign.center,
               style: TextStyle(fontSize: 14, color: Colors.grey),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
             _buildWearStatus(),
             const SizedBox(height: 16),
             const Text(
-              'When you press the button on the watch,\na popup will confirm the link.',
+              'When you press the button on the watch, a popup will confirm the link.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12),
             ),
+            const SizedBox(height: 20),
+            const Divider(),
+            const Text(
+              'Watch event log (real time)',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            _buildEventLog(),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildEventLog() {
+    return ValueListenableBuilder<int>(
+      valueListenable: watchEventLogVersion,
+      builder: (context, _, __) {
+        if (watchEventLog.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Text(
+              'No events yet. Press "Call Paul" on the watch to see logs here.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          );
+        }
+        return Container(
+          constraints: const BoxConstraints(maxHeight: 220),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade400),
+            borderRadius: BorderRadius.circular(8),
+            color: Colors.grey.shade100,
+          ),
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: watchEventLog.length,
+            itemBuilder: (context, index) {
+              // Newest first (last in list)
+              final entry = watchEventLog[watchEventLog.length - 1 - index];
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${entry.time} • ${entry.message}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (entry.detail != null && entry.detail!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          entry.detail!,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade700,
+                            fontFamily: 'monospace',
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
