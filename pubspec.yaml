@@ -1,0 +1,41 @@
+name: call_paul
+description: "Call Paul - Safety companion app with smartwatch integration. Group 1: smartphone app (fake call, AI scripts, n8n SOS)."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+
+  # Incoming call UI (name, avatar, ringtone, accept/decline) – works when locked
+  flutter_callkit_incoming: ^3.0.0
+
+  # AI: script generation (scenarios, context-aware)
+  google_generative_ai: ^0.4.7
+
+  # HTTP: n8n SOS webhook, ElevenLabs API, etc.
+  http: ^1.2.0
+
+  # Local config: Paul persona, scenarios, trusted contact, delay presets
+  shared_preferences: ^2.2.2
+
+  # Audio: ringtone + AI-generated "Paul" voice playback
+  just_audio: ^0.9.36
+
+  # Location for SOS message to trusted contact
+  geolocator: ^11.0.0
+
+  # Permissions (phone, location, microphone)
+  permission_handler: ^11.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+
+flutter:
+  uses-material-design: true
