@@ -6,12 +6,12 @@ This document is for the **Group 2 (watch app)** team. It explains how to get th
 
 ## 1. Get the phone app APK from Group 1
 
-Group 1 builds the APK from the **phone-app** branch of this repo.
+Group 1 builds the APK on their computer from the **phone-app** branch, then **sends you the file**. There is no automatic “download link” — you get **call_paul_phone.apk** from Group 1.
 
-**Where to get it**
+**Where you get it**
 
-- Group 1 will share the APK file **call_paul_phone.apk** via your chosen channel (Drive, Slack, etc.), or
-- You can build it yourself from the repo (see “Build the phone APK yourself” below).
+- **From Group 1:** They will send you the file **call_paul_phone.apk** (e.g. via **WhatsApp**, Google Drive, email, Slack, etc.). Download or save the file from that message/link, then proceed to “Install the phone APK” below.
+- **Or build it yourself:** If you have the repo and Flutter set up, you can build **call_paul_phone.apk** locally (see “Build the phone APK yourself” below).
 
 **Important values in the phone app**
 
