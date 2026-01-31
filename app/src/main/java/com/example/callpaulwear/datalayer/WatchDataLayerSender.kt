@@ -17,19 +17,16 @@ import org.json.JSONObject
  */
 object WatchDataLayerSender {
 
-    private const val TAG = "WatchDataLayerSender"
+    private const val TAG = "CallPaulWatch"
 
-    /** Path used for Call Paul trigger messages. The phone app must listen on this path. */
+    /** Pfad für Call Paul – muss exakt mit der Phone-App übereinstimmen. */
     const val MESSAGE_PATH = "/call-paul"
 
     /**
-     * Sends a Call Paul trigger to the paired phone.
+     * Sendet einen Call-Paul-Trigger an die gepaarte Phone-App.
      *
-     * @param context Application context
-     * @param scenario Optional scenario name (boss, friend, mum). Default: "boss"
-     * @param delaySeconds Delay before the phone acts (e.g. fake call). Default: 15
-     * @param onSuccess Called when the message was sent successfully
-     * @param onFailure Called when no phone is connected or send failed
+     * DEBUGGING: Wichtigster Log ist "Sending message to phone, path=..." – wenn dieser erscheint
+     * aber die Phone-App nichts empfängt, liegt das Problem bei applicationId oder Pfad-Mismatch.
      */
     fun sendCallPaulTrigger(
         context: Context,
@@ -44,37 +41,49 @@ object WatchDataLayerSender {
             put("delay_seconds", delaySeconds)
         }
         val payload = json.toString().toByteArray(Charsets.UTF_8)
+        Log.d(TAG, "JSON payload: $json")
 
-        val nodeClient = Wearable.getNodeClient(context)
+        // MessageClient: Einweg-Kommunikation, ideal für RPC. Läuft asynchron im Hintergrund.
         val messageClient = Wearable.getMessageClient(context)
+        val nodeClient = Wearable.getNodeClient(context)
 
-        nodeClient.connectedNodes.addOnSuccessListener { nodes ->
-            val phoneNodes = nodes.filter { it.isNearby }
-            if (phoneNodes.isEmpty()) {
-                onFailure("No paired phone connected")
-                return@addOnSuccessListener
-            }
+        nodeClient.connectedNodes
+            .addOnSuccessListener { nodes ->
+                val phoneNodes = nodes.filter { it.isNearby }
+                Log.d(TAG, "Connected nodes: ${nodes.size}, nearby (phone): ${phoneNodes.size}")
 
-            var anySuccess = false
-            var pending = phoneNodes.size
+                if (phoneNodes.isEmpty()) {
+                    Log.e(TAG, "No paired phone connected (isNearby). Nodes: ${nodes.map { it.displayName }}")
+                    onFailure("No paired phone connected")
+                    return@addOnSuccessListener
+                }
 
-            for (node: Node in phoneNodes) {
-                messageClient.sendMessage(node.id, MESSAGE_PATH, payload)
-                    .addOnSuccessListener {
-                        anySuccess = true
-                        if (--pending == 0) {
-                            if (anySuccess) onSuccess() else onFailure("Failed to send to all nodes")
+                var anySuccess = false
+                var pending = phoneNodes.size
+
+                for (node: Node in phoneNodes) {
+                    // DEBUG: Wichtigster Log – bestätigt, dass wir kurz vor dem Senden sind
+                    Log.d(TAG, "Sending message to phone, path=$MESSAGE_PATH, node=${node.displayName} (${node.id})")
+
+                    messageClient.sendMessage(node.id, MESSAGE_PATH, payload)
+                        .addOnSuccessListener {
+                            Log.d(TAG, "MessageClient.sendMessage SUCCESS for node ${node.displayName}")
+                            anySuccess = true
+                            if (--pending == 0) {
+                                if (anySuccess) onSuccess() else onFailure("Failed to send to all nodes")
+                            }
                         }
-                    }
-                    .addOnFailureListener { e ->
-                        Log.e(TAG, "Failed to send to node ${node.displayName}: ${e.message}")
-                        if (--pending == 0) {
-                            if (anySuccess) onSuccess() else onFailure(e.message ?: "Send failed")
+                        .addOnFailureListener { e ->
+                            Log.e(TAG, "MessageClient.sendMessage FAILED for ${node.displayName}: ${e.message}", e)
+                            if (--pending == 0) {
+                                if (anySuccess) onSuccess() else onFailure(e.message ?: "Send failed")
+                            }
                         }
-                    }
+                }
             }
-        }.addOnFailureListener { e ->
-            onFailure(e.message ?: "Could not get connected nodes")
-        }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Could not get connected nodes: ${e.message}", e)
+                onFailure(e.message ?: "Could not get connected nodes")
+            }
     }
 }
