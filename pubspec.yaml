@@ -32,6 +32,9 @@ dependencies:
   # Permissions (phone, location, microphone)
   permission_handler: ^11.0.0
 
+  # Wear OS Data Layer – listen for /call-paul messages from watch
+  flutter_wear_os_connectivity: ^1.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
