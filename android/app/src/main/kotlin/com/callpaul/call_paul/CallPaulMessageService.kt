@@ -13,6 +13,16 @@ import io.flutter.plugin.common.MethodChannel
  */
 class CallPaulMessageService : WearableListenerService() {
 
+    override fun onCreate() {
+        super.onCreate()
+        Log.d(TAG, "CallPaulMessageService onCreate")
+    }
+
+    override fun onDestroy() {
+        Log.d(TAG, "CallPaulMessageService onDestroy")
+        super.onDestroy()
+    }
+
     override fun onMessageReceived(messageEvent: MessageEvent) {
         Log.d(TAG, "onMessageReceived, path=${messageEvent.path}")
 

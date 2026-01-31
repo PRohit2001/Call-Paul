@@ -25,7 +25,8 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-        <!-- Wear Data Layer: receive messages on /call-paul from watch -->
+        <!-- Wear Data Layer: receive messages on /call-paul from watch.
+             Requires same applicationId and same signing key as the watch app. -->
         <service
             android:name=".CallPaulMessageService"
             android:enabled="true"
@@ -36,6 +37,10 @@
                     android:scheme="wear"
                     android:host="*"
                     android:path="/call-paul" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/call-paul" />
             </intent-filter>
         </service>
         <!-- Don't delete the meta-data below.
