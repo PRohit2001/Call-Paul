@@ -26,20 +26,20 @@ object WatchDataLayerSender {
      * Sends a Call Paul trigger to the paired phone.
      *
      * @param context Application context
-     * @param scenario Optional scenario name (e.g. "mom_calling"). Default: "mom_calling"
-     * @param delaySeconds Delay before the phone acts (e.g. fake call). Default: 5
+     * @param scenario Optional scenario name (boss, friend, mum). Default: "boss"
+     * @param delaySeconds Delay before the phone acts (e.g. fake call). Default: 15
      * @param onSuccess Called when the message was sent successfully
      * @param onFailure Called when no phone is connected or send failed
      */
     fun sendCallPaulTrigger(
         context: Context,
-        scenario: String = "mom_calling",
-        delaySeconds: Int = 5,
+        scenario: String = "boss",
+        delaySeconds: Int = 15,
         onSuccess: () -> Unit = {},
         onFailure: (String) -> Unit = { Log.e(TAG, it) }
     ) {
         val json = JSONObject().apply {
-            put("trigger", "panic")
+            put("trigger", "call_paul")
             put("scenario", scenario)
             put("delay_seconds", delaySeconds)
         }
