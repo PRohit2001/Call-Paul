@@ -25,6 +25,8 @@ dependencies:
 
   # Audio: ringtone + AI-generated "Paul" voice playback
   just_audio: ^0.9.36
+  path_provider: ^2.1.1
+  audio_session: ^0.1.18
 
   # Location for SOS message to trusted contact
   geolocator: ^11.0.0

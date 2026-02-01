@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_wear_os_connectivity/flutter_wear_os_connectivity.dart';
 import 'package:http/http.dart' as http;
+import 'package:just_audio/just_audio.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibration/vibration.dart';
 
@@ -38,15 +42,29 @@ Future<void> saveSettings({
   await prefs.setString(_keyContactPhone, contactPhone);
 }
 
-/// Digital bridge: when the watch triggers the phone, the phone calls the n8n webhook.
-/// Returns a short status string so the app can show whether the POST succeeded.
-Future<String> triggerN8nWorkflow(String name, String scenario) async {
-  final String n8nTestUrl =
+/// Result from n8n webhook. n8n returns JSON: audioBase64 (MP3 as base64), text (transcript), scenario.
+class N8nCallResult {
+  final String? audioBase64;
+  final String? text;
+  final String? scenario;
+
+  N8nCallResult({this.audioBase64, this.text, this.scenario});
+}
+
+/// Log tag for filtering in logcat: adb logcat | findstr "CallPaul"
+void _log(String message) => debugPrint('CallPaul: $message');
+
+/// Digital bridge: POST to n8n webhook. n8n responds with JSON: { audioBase64, text, scenario }.
+/// Returns N8nCallResult on success so the app can play the base64 audio and show the text.
+Future<N8nCallResult?> triggerN8nWorkflow(String name, String scenario) async {
+  final String n8nUrl =
       'https://pranavdesolator.app.n8n.cloud/webhook/call-paul';
+
+  _log('n8n request start: url=$n8nUrl scenario=$scenario');
 
   try {
     final response = await http.post(
-      Uri.parse(n8nTestUrl),
+      Uri.parse(n8nUrl),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'name': name,
@@ -55,16 +73,49 @@ Future<String> triggerN8nWorkflow(String name, String scenario) async {
       }),
     );
 
-    if (response.statusCode == 200) {
-      debugPrint('n8n Received: ${response.body}');
-      return 'n8n OK (200)';
-    } else {
-      debugPrint('n8n Error: ${response.statusCode}');
-      return 'n8n Error: ${response.statusCode}';
+    final bodyLength = response.body.length;
+    final bodyPreview = bodyLength > 300
+        ? '${response.body.substring(0, 300)}...'
+        : response.body;
+    _log('n8n response: status=${response.statusCode} bodyLength=$bodyLength bodyStart=$bodyPreview');
+
+    if (response.statusCode != 200) {
+      _log('n8n error: status ${response.statusCode}');
+      return null;
     }
-  } catch (e) {
-    debugPrint('Connection Failed: $e');
-    return 'n8n failed: $e';
+
+    // 1. Parse the JSON response
+    try {
+      final data = jsonDecode(response.body) as Map<String, dynamic>?;
+      if (data == null) {
+        _log('n8n parse: data is null');
+        return null;
+      }
+      final base64String = data['audioBase64'] as String?;
+      final transcript = data['text'] as String?;
+      final hasAudio = base64String != null && base64String.isNotEmpty;
+      _log('n8n parse: hasAudio=$hasAudio audioBase64Length=${base64String?.length ?? 0} text=${transcript?.substring(0, transcript.length.clamp(0, 80)) ?? "null"}');
+      debugPrint('CallPaul: Paul says: $transcript');
+
+      if (hasAudio) {
+        return N8nCallResult(
+          audioBase64: base64String,
+          text: transcript,
+          scenario: data['scenario'] as String? ?? scenario,
+        );
+      }
+      return N8nCallResult(
+        text: transcript,
+        scenario: data['scenario'] as String? ?? scenario,
+      );
+    } on FormatException catch (e) {
+      _log('n8n FormatException (response may be binary not JSON): $e');
+      return null;
+    }
+  } catch (e, st) {
+    _log('n8n connection failed: $e');
+    debugPrint('CallPaul: stackTrace: $st');
+    return null;
   }
 }
 
@@ -324,7 +375,7 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
                     icon: Icons.call,
                     onTap: () async {
                       Vibration.cancel();
-                      await triggerN8nWorkflow('call_paul', widget.scenario);
+                      final n8nResult = await triggerN8nWorkflow('call_paul', widget.scenario);
                       if (!mounted) return;
                       final settings = await loadSettings();
                       final callerName = settings['contactName']?.trim().isNotEmpty == true
@@ -333,7 +384,11 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
                       if (!mounted) return;
                       Navigator.of(context).pushReplacement(
                         MaterialPageRoute(
-                          builder: (_) => ActiveCallScreen(callerName: callerName),
+                          builder: (_) => ActiveCallScreen(
+                            callerName: callerName,
+                            audioBase64: n8nResult?.audioBase64,
+                            spokenText: n8nResult?.text,
+                          ),
                         ),
                       );
                     },
@@ -359,10 +414,18 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
 }
 
 /// Active call screen (mock-up: Paul, Active label, duration timer, Mute/Keypad/Speaker/Add, End Call).
+/// Plays audio from n8n JSON: audioBase64 (MP3 as base64) and shows spokenText.
 class ActiveCallScreen extends StatefulWidget {
-  const ActiveCallScreen({super.key, this.callerName = 'Paul'});
+  const ActiveCallScreen({
+    super.key,
+    this.callerName = 'Paul',
+    this.audioBase64,
+    this.spokenText,
+  });
 
   final String callerName;
+  final String? audioBase64;
+  final String? spokenText;
 
   @override
   State<ActiveCallScreen> createState() => _ActiveCallScreenState();
@@ -373,6 +436,9 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   bool _isMuted = false;
   bool _isSpeaker = false;
   Timer? _timer;
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  /// Temp file path for n8n base64 audio (Android does not support data: URIs).
+  String? _tempAudioPath;
 
   static const Color _bgDark = Color(0xFF1C1C1E);
   static const Color _cardDark = Color(0xFF2C2C2E);
@@ -385,11 +451,58 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _callDurationSeconds++);
     });
+    _playN8nAudioIfPresent();
+  }
+
+  Future<void> _playN8nAudioIfPresent() async {
+    final base64String = widget.audioBase64;
+    if (base64String == null || base64String.isEmpty) {
+      _log('playback: no audioBase64 – skip');
+      return;
+    }
+    _log('playback: start base64Length=${base64String.length}');
+    try {
+      // Android/ExoPlayer does not support data:audio/mpeg;base64,... URIs.
+      // Decode base64, write to a temp file, then play from file.
+      final bytes = base64Decode(base64String);
+      _log('playback: decoded bytes=${bytes.length}');
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/paul_audio_${DateTime.now().millisecondsSinceEpoch}.mp3');
+      await file.writeAsBytes(bytes);
+      if (mounted) _tempAudioPath = file.path;
+      _log('playback: temp file ${file.path} size=${await file.length()}');
+
+      // Configure audio session so playback is audible (speaker on Android).
+      final session = await AudioSession.instance;
+      await session.configure(AudioSessionConfiguration.speech());
+      _log('playback: audio session configured');
+
+      await _audioPlayer.setAudioSource(AudioSource.uri(Uri.file(file.path)));
+      _log('playback: setAudioSource ok');
+      await _audioPlayer.play();
+      _log('playback: play() called');
+      // Log player state changes (buffering, ready, completed, stopped)
+      _audioPlayer.playerStateStream.listen((state) {
+        _log('playback: state=${state.processingState} playing=${state.playing}');
+      });
+    } on FormatException catch (e) {
+      _log('playback: FormatException – invalid base64 or MP3: $e');
+    } catch (e, st) {
+      _log('playback: failed: $e');
+      debugPrint('CallPaul: playback stackTrace: $st');
+    }
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _audioPlayer.dispose();
+    if (_tempAudioPath != null) {
+      try {
+        final f = File(_tempAudioPath!);
+        if (f.existsSync()) f.deleteSync();
+      } catch (_) {}
+    }
     super.dispose();
   }
 
@@ -489,6 +602,23 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
                     fontFamily: 'monospace',
                   ),
                 ),
+                if (widget.spokenText != null && widget.spokenText!.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      widget.spokenText!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: _textMuted,
+                        fontStyle: FontStyle.italic,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
                 const Spacer(flex: 2),
                 // Call controls: Mute, Keypad, Speaker (row 1), Add (row 2)
                 Row(
