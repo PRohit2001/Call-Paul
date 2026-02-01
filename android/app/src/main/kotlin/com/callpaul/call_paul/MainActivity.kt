@@ -13,7 +13,16 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         flutterEngineRef = flutterEngine
-        deliverPendingWatchPayload()
+        // Cold start with watch payload: Flutter will get it via getLaunchPayload and show incoming call first.
+        // Do NOT call deliverPendingWatchPayload() here so the first screen can be incoming call.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+            if (call.method == "getLaunchPayload") {
+                val payload = intent?.getStringExtra(EXTRA_WATCH_PAYLOAD)
+                result.success(payload)
+            } else {
+                result.notImplemented()
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -37,11 +46,11 @@ class MainActivity : FlutterActivity() {
         val payload = pendingWatchPayload ?: return
         val engine = flutterEngineRef ?: return
         pendingWatchPayload = null
-        // Delay so Flutter UI (method channel handler + log list) is ready after cold start
+        // App was already running; push incoming call screen via method channel
         Handler(Looper.getMainLooper()).postDelayed({
             MethodChannel(engine.dartExecutor.binaryMessenger, CHANNEL)
                 .invokeMethod("onWatchMessage", payload)
-        }, 400)
+        }, 300)
     }
 
     companion object {

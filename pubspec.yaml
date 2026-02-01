@@ -35,6 +35,9 @@ dependencies:
   # Wear OS Data Layer – listen for /call-paul messages from watch
   flutter_wear_os_connectivity: ^1.0.0
 
+  # Vibration for incoming call screen (ring-like pattern)
+  vibration: ^2.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
